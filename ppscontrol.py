@@ -3,6 +3,7 @@ from pyfiglet import Figlet
 import datetime
 import sys
 f = Figlet()
+WAITING=5 #in Seconds
 print (f.renderText('DDOS Identifier'))
 overaldic={}
 class NIC(threading.Thread):
@@ -12,10 +13,11 @@ class NIC(threading.Thread):
         self.Threshold=Threshold
         self.nic=nic
         self.LogAll=LogAll
-        
+        self.buffer=psutil.net_io_counters(pernic=True, nowrap=True)[name].packets_recv
 
     def getpackets(self):
-        datacollector = psutil.net_io_counters(pernic=True, nowrap=True)[self.nicname]
+        datacollector = psutil.net_io_counters(pernic=True, nowrap=True)[self.nicname].packets_recv
+
         return datacollector
         
     def Writelog(self,content:str):
@@ -24,17 +26,20 @@ class NIC(threading.Thread):
     def run(self):
 
         while True:
-            rx=self.getpackets().packets_recv
+            rx=self.getpackets()
+            
             if rx !=0:
-                pps=self.nicname,self.getpackets().packets_recv
-                
+       
+                ppsvalue=(rx-self.buffer)//WAITING
+                pps=self.nicname,ppsvalue
+                self.buffer=rx
                 if self.LogAll:
                     self.Writelog(f"[x] {datetime.datetime.now()} ::Packets Per Second on {self.nicname} ::{pps[1]}!")
                 elif int(pps[1]) > self.Threshold:
                     self.Writelog(f"{datetime.datetime.now()} ::Packets Per Second on {self.nicname} ::{pps[1]}!")
-                overaldic[self.nicname]+=pps[1]
+                overaldic[self.nicname]+=pps[1]#SUM of all packets received on the NIC
                
-                time.sleep(5)
+                time.sleep(WAITING)
 def CheckMAXpps(count:int=0,timecycle:int=10):
     """this function compares pps per NIC sorted in dictionary, 5 times every 10 seconds by default|count=0 means endless """
 
@@ -59,4 +64,3 @@ if __name__=="__main__":
     threading.Thread(target=CheckMAXpps).start()
     for i in tbox:
         i.start()
-        #print("Thread Started")
